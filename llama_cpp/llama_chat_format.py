@@ -1260,8 +1260,15 @@ def _grammar_for_response_format(
     response_format: llama_types.ChatCompletionRequestResponseFormat,
     verbose: bool = False,
 ):
-    if response_format["type"] != "json_object":
+    if response_format["type"] not in ("json_object", "json_schema"):
         return None
+
+    if response_format["type"] == "json_schema" and "json_schema" in response_format:
+        json_schema = response_format["json_schema"]
+        if "schema" in json_schema:
+            return _grammar_for_json_schema(
+                json.dumps(json_schema["schema"]), verbose=verbose
+            )
 
     if "schema" in response_format:
         return _grammar_for_json_schema(

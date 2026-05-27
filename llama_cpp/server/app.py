@@ -377,7 +377,7 @@ async def create_embedding(
     "/v1/chat/completions",
     summary="Chat",
     dependencies=[Depends(authenticate)],
-    response_model=Union[llama_cpp.ChatCompletion, str],
+    response_model=None,
     responses={
         "200": {
             "description": "Successful Response",
