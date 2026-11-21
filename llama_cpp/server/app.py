@@ -245,7 +245,6 @@ async def get_event_publisher(
 
 
 async def _receive_chat_events(recv_chan):
-    # EventSourceResponse does not own the channel's context-manager lifetime.
     async with recv_chan:
         async for event in recv_chan:
             yield event
@@ -521,7 +520,6 @@ async def create_chat_completion(
     }
     kwargs = body.model_dump(exclude=exclude)
 
-    # Check schema requests before opening an SSE response or loading a model.
     prepared_output = prepare_response_format(kwargs.get("response_format"))
     check_structured_output_options(
         prepared_output, tools=body.tools, tool_choice=body.tool_choice,

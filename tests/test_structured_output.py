@@ -1,10 +1,3 @@
-"""Model-free regression tests; run on the designated testing machine.
-
-Load the actual pure-Python implementation in an isolated package so these tests
-do not need a compiled llama library, a model, or a GPU. HTTP tests execute the
-real chat route, publisher, request types, and error handler with a fake model.
-"""
-
 from __future__ import annotations
 
 import ast

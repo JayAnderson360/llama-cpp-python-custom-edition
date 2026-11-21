@@ -1,11 +1,3 @@
-"""Shared structured-output preparation and validation, independent of a model.
-
-Schema-bearing requests never fall back to unconstrained JSON. Strict mode uses
-a conservative subset of the bundled GBNF converter; completed responses are
-also validated against the full supplied schema. Streaming content is provisional
-until the terminal chunk has passed validation.
-"""
-
 from __future__ import annotations
 
 import copy
@@ -18,14 +10,10 @@ from .llama_grammar import JSON_GBNF, LlamaGrammar
 
 
 class StructuredOutputRequestError(ValueError):
-    """An invalid or unsupported structured-output request (HTTP 400)."""
-
     code = "invalid_response_format"
 
 
 class StructuredOutputValidationError(ValueError):
-    """Generated structured output was incomplete or invalid (HTTP 422)."""
-
     code = "structured_output_validation_failed"
 
 
@@ -48,7 +36,6 @@ _SCHEMA_VALUES = {
 
 
 def _schema_nodes(schema: Any, path: str = "$") -> Iterator[tuple[str, Any]]:
-    """Visit schema positions, not arbitrary JSON values in const/default/enum."""
     yield path, schema
     if not isinstance(schema, dict):
         return
@@ -77,8 +64,6 @@ def _check_references(schema: Dict[str, Any]) -> None:
     for path, node in _schema_nodes(schema):
         if not isinstance(node, dict):
             continue
-        # Embedded resources and dynamic references do not match this converter's
-        # local JSON-pointer resolution model. Do not let a validator fetch them.
         if any(key in node for key in ("$id", "$anchor", "$dynamicAnchor", "$recursiveAnchor", "$dynamicRef", "$recursiveRef")):
             raise StructuredOutputRequestError(f"Unsupported schema reference scope at {path}.")
         if "$ref" not in node:
@@ -103,7 +88,6 @@ def _check_references(schema: Dict[str, Any]) -> None:
 
 
 def _check_strict_subset(schema: Dict[str, Any]) -> None:
-    """Reject constraints the bundled converter would ignore or approximate."""
     for path, node in _schema_nodes(schema):
         if not isinstance(node, dict):
             raise StructuredOutputRequestError(f"Strict grammar requires an object schema at {path}.")
@@ -309,7 +293,6 @@ def validate_chat_result(result: Any, prepared: Optional[PreparedStructuredOutpu
         message = choice.get("message") if isinstance(choice, dict) else None
         if not isinstance(message, dict):
             raise StructuredOutputValidationError("Structured completion has no assistant message.")
-        # A refusal is an explicit protocol outcome, not a schema-valid answer.
         if message.get("refusal"):
             continue
         if message.get("tool_calls") or message.get("function_call"):
