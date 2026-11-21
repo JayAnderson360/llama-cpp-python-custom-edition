@@ -145,6 +145,15 @@ def http_app(handler):
 
 
 class StructuredOutputTests(unittest.TestCase):
+    def test_empty_legacy_schema_preserves_upstream_object_constraint(self):
+        prepared = structured.prepare_response_format({"type": "json_object", "schema": {}})
+        self.assertIn("root ::= object", prepared.grammar.grammar.splitlines())
+        prepared.validate_content('{"value":1}')
+        with self.assertRaises(structured.StructuredOutputValidationError):
+            prepared.validate_content("1")
+        unconstrained = structured.prepare_response_format(request_format({}, strict=False))
+        unconstrained.validate_content("1")
+
     def test_dynamic_schema_and_legacy_envelope(self):
         for schema, value in [(PERSON, {"age": 4}),
                               ({"type": "array", "items": {"type": "string"}}, ["a", "b"])]:

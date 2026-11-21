@@ -256,6 +256,8 @@ def prepare_response_format(response_format: Any) -> Optional[PreparedStructured
     schema = definition["schema"]
     if not isinstance(schema, dict):
         raise StructuredOutputRequestError("The response schema must be a JSON object.")
+    if kind == "json_object" and not schema:
+        schema = {"type": "object"}
     try:
         schema = json.loads(json.dumps(schema, allow_nan=False))
     except (TypeError, ValueError, RecursionError) as exc:
