@@ -35,6 +35,11 @@ from pathlib import Path
 
 from .llama_types import *
 from .llama_grammar import LlamaGrammar
+from ._structured_output import (
+    prepare_response_format,
+    check_structured_output_options,
+    validate_chat_result,
+)
 from .llama_cache import (
     BaseLlamaCache,
     LlamaCache,            # type: ignore
@@ -4555,13 +4560,21 @@ prompt: The prompt to generate text from.
         """
         if presence_penalty is not None and present_penalty == 0.0:
             present_penalty = presence_penalty
+        prepared_output = prepare_response_format(response_format)
+        check_structured_output_options(
+            prepared_output, tools=tools, tool_choice=tool_choice,
+            functions=functions, function_call=function_call, grammar=grammar,
+        )
+        if prepared_output is not None:
+            response_format = prepared_output.response_format
+            grammar = prepared_output.grammar
 
         handler = (
             self.chat_handler
             or self._chat_handlers.get(self.chat_format)
             or llama_chat_format.get_chat_completion_handler(self.chat_format)
         )
-        return handler(
+        result = handler(
             llama=self,
             messages=messages,
             functions=functions,
@@ -4617,6 +4630,8 @@ prompt: The prompt to generate text from.
             reasoning_start_in_prompt=reasoning_start_in_prompt,
             reasoning_start_max_tokens=reasoning_start_max_tokens,
         )
+
+        return validate_chat_result(result, prepared_output, stream=stream)
 
     def create_chat_completion_openai_v1(
         self,

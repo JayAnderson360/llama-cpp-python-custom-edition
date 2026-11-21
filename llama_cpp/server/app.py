@@ -42,7 +42,13 @@ from llama_cpp.server.types import (
     DetokenizeInputRequest,
     DetokenizeInputResponse,
 )
-from llama_cpp.server.errors import RouteErrorHandler
+from llama_cpp.server.errors import RouteErrorHandler, structured_output_error
+from llama_cpp._structured_output import (
+    prepare_response_format,
+    check_structured_output_options,
+    StructuredOutputRequestError,
+    StructuredOutputValidationError,
+)
 
 
 router = APIRouter(route_class=RouteErrorHandler)
@@ -203,6 +209,7 @@ async def get_event_publisher(
     async with contextlib.asynccontextmanager(get_llama_proxy)() as llama_proxy:
         llama = prepare_request_resources(body, llama_proxy, body_model, kwargs)
         async with inner_send_chan:
+            iterator = None
             try:
                 iterator = await run_in_threadpool(llama_call, llama, **kwargs)
                 async for chunk in iterate_in_threadpool(iterator):
@@ -210,9 +217,19 @@ async def get_event_publisher(
                     if await request.is_disconnected():
                         raise anyio.get_cancelled_exc_class()()
                     if interrupt_requests and llama_outer_lock.locked():
-                        await inner_send_chan.send(dict(data="[DONE]"))
+                        response_format = kwargs.get("response_format") or {}
+                        if response_format.get("type") in ("json_object", "json_schema"):
+                            _, error = structured_output_error(StructuredOutputValidationError(
+                                "Structured output was interrupted before completion."
+                            ))
+                            await inner_send_chan.send(dict(data=json.dumps({"error": error})))
+                        else:
+                            await inner_send_chan.send(dict(data="[DONE]"))
                         raise anyio.get_cancelled_exc_class()()
                 await inner_send_chan.send(dict(data="[DONE]"))
+            except (StructuredOutputRequestError, StructuredOutputValidationError) as exc:
+                _, error = structured_output_error(exc)
+                await inner_send_chan.send(dict(data=json.dumps({"error": error})))
             except anyio.get_cancelled_exc_class() as e:
                 print("disconnected")
                 with anyio.move_on_after(1, shield=True):
@@ -220,6 +237,18 @@ async def get_event_publisher(
                         f"Disconnected from client (via refresh/close) {request.client}"
                     )
                     raise e
+            finally:
+                close = getattr(iterator, "close", None)
+                if callable(close):
+                    with anyio.CancelScope(shield=True):
+                        await run_in_threadpool(close)
+
+
+async def _receive_chat_events(recv_chan):
+    # EventSourceResponse does not own the channel's context-manager lifetime.
+    async with recv_chan:
+        async for event in recv_chan:
+            yield event
 
 
 def _logit_bias_tokens_to_input_ids(
@@ -492,11 +521,20 @@ async def create_chat_completion(
     }
     kwargs = body.model_dump(exclude=exclude)
 
+    # Check schema requests before opening an SSE response or loading a model.
+    prepared_output = prepare_response_format(kwargs.get("response_format"))
+    check_structured_output_options(
+        prepared_output, tools=body.tools, tool_choice=body.tool_choice,
+        functions=body.functions, function_call=body.function_call, grammar=body.grammar,
+    )
+    if prepared_output is not None:
+        kwargs["response_format"] = prepared_output.response_format
+
     # handle streaming request
     if kwargs.get("stream", False):
         send_chan, recv_chan = anyio.create_memory_object_stream(10)
         return EventSourceResponse(
-            recv_chan,
+            _receive_chat_events(recv_chan),
             data_sender_callable=partial(  # type: ignore
                 get_event_publisher,
                 request=request,

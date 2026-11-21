@@ -231,7 +231,7 @@ class ChatCompletionFunctionCallOption(TypedDict):
 
 
 class ChatCompletionResponseFormatJSONSchema(TypedDict):
-    name: str
+    name: NotRequired[str]
     description: NotRequired[str]
     schema: NotRequired[Dict[str, Any]]
     strict: NotRequired[Optional[bool]]
@@ -240,6 +240,9 @@ class ChatCompletionResponseFormatJSONSchema(TypedDict):
 class ChatCompletionRequestResponseFormat(TypedDict):
     type: Literal["text", "json_object", "json_schema"]
     json_schema: NotRequired[ChatCompletionResponseFormatJSONSchema]
+    # Preserve legacy schema requests through HTTP/Pydantic serialization too.
+    schema: NotRequired[Dict[str, Any]]
+    strict: NotRequired[Optional[bool]]
 
 
 class ChatCompletionRequestMessageContentPartText(TypedDict):

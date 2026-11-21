@@ -15,6 +15,10 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
+from llama_cpp._structured_output import (
+    StructuredOutputRequestError,
+    StructuredOutputValidationError,
+)
 
 from llama_cpp.server.types import (
     CreateCompletionRequest,
@@ -30,6 +34,16 @@ class ErrorResponse(TypedDict):
     type: str
     param: Optional[str]
     code: Optional[str]
+
+
+def structured_output_error(error: Exception) -> Tuple[int, ErrorResponse]:
+    is_request = isinstance(error, StructuredOutputRequestError)
+    return (400 if is_request else 422), ErrorResponse(
+        message=str(error),
+        type="invalid_request_error" if is_request else "structured_output_error",
+        param="response_format" if is_request else None,
+        code=getattr(error, "code", "structured_output_validation_failed"),
+    )
 
 
 class ErrorResponseFormatters:
@@ -134,6 +148,9 @@ class RouteErrorHandler(APIRoute):
         ] = None,
     ) -> Tuple[int, ErrorResponse]:
         """Wraps error message in OpenAI style error response"""
+        if isinstance(error, (StructuredOutputRequestError, StructuredOutputValidationError)):
+            return structured_output_error(error)
+
         if body is not None and isinstance(
             body,
             (

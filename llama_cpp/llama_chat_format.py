@@ -1245,7 +1245,7 @@ def _tool_parameter_schema(function):
 
 
 def _grammar_for_json_schema(
-    schema: str, verbose: bool = False, fallback_to_json: bool = True
+    schema: str, verbose: bool = False, fallback_to_json: bool = False
 ):
     try:
         return llama_grammar.LlamaGrammar.from_json_schema(schema, verbose=verbose)
@@ -1260,22 +1260,10 @@ def _grammar_for_response_format(
     response_format: llama_types.ChatCompletionRequestResponseFormat,
     verbose: bool = False,
 ):
-    if response_format["type"] not in ("json_object", "json_schema"):
-        return None
+    from ._structured_output import prepare_response_format
 
-    if response_format["type"] == "json_schema" and "json_schema" in response_format:
-        json_schema = response_format["json_schema"]
-        if "schema" in json_schema:
-            return _grammar_for_json_schema(
-                json.dumps(json_schema["schema"]), verbose=verbose
-            )
-
-    if "schema" in response_format:
-        return _grammar_for_json_schema(
-            json.dumps(response_format["schema"] or {"type": "object"}), verbose=verbose
-        )
-    else:
-        return _grammar_for_json(verbose=verbose)
+    prepared = prepare_response_format(response_format)
+    return prepared.grammar if prepared is not None else None
 
 
 ### Chat Formats ###
